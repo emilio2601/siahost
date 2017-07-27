@@ -1,0 +1,170 @@
+<!doctype html>
+<!--
+  Material Design Lite
+  Copyright 2015 Google Inc. All rights reserved.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License
+-->
+<html lang="en" ng-app="siaApp">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="A front-end template that helps you build fast, modern mobile web apps.">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+    <title>SiaHost</title>
+
+
+    <link rel="shortcut icon" href="images/favicon.png">
+
+    <!-- SEO: If your mobile URL is different from the desktop URL, add a canonical link to the desktop page https://developers.google.com/webmasters/smartphone-sites/feature-phones -->
+    <!--
+    <link rel="canonical" href="http://www.example.com/">
+    -->
+
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:regular,bold,italic,thin,light,bolditalic,black,medium&amp;lang=en">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.cyan-light_blue.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css">
+    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/angular_material/1.1.0/angular-material.min.css">
+</head>
+  <!--
+    Your HTML content here
+  -->  
+  
+  <!-- Angular Material requires Angular.js Libraries -->
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.5/angular.min.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.5/angular-animate.min.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.5/angular-aria.min.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.5/angular-messages.min.js"></script>
+
+  <!-- Angular Material Library -->
+  <script src="https://ajax.googleapis.com/ajax/libs/angular_material/1.1.0/angular-material.min.js"></script>
+  </head>
+  <body ng-controller="SiaController">
+    <div class="demo-layout mdl-layout mdl-js-layout mdl-layout--fixed-drawer mdl-layout--fixed-header">
+      <header class="demo-header mdl-layout__header mdl-color--grey-100 mdl-color-text--grey-600">
+        <div class="mdl-layout__header-row">
+          <span class="mdl-layout-title">Downloads</span>
+          <div class="mdl-layout-spacer"></div>
+          <button class="mdl-button mdl-js-button mdl-js-ripple-effect mdl-button--icon" id="hdrbtn">
+            <i class="material-icons">more_vert</i>
+          </button>
+          <ul class="mdl-menu mdl-js-menu mdl-js-ripple-effect mdl-menu--bottom-right" for="hdrbtn">
+            <li class="mdl-menu__item">About</li>
+            <li class="mdl-menu__item">Contact</li>
+            <li class="mdl-menu__item">Legal information</li>
+          </ul>
+        </div>
+      </header>
+      <div class="demo-drawer mdl-layout__drawer mdl-color--blue-grey-900 mdl-color-text--blue-grey-50">
+        <header class="demo-drawer-header">
+            <span>{{email}}</span>
+        </header>
+        <nav class="demo-navigation mdl-navigation mdl-color--blue-grey-800">
+          <a class="mdl-navigation__link" href="/"><i class="mdl-color-text--blue-grey-400 material-icons" role="presentation">folder</i>File Manager</a>
+          <a class="mdl-navigation__link" href="downloads"><i class="mdl-color-text--blue-grey-400 material-icons" role="presentation">cloud_download</i>Downloads</a>
+          <a class="mdl-navigation__link" href="faq"><i class="mdl-color-text--blue-grey-400 material-icons" role="presentation">question_answer</i>FAQ</a>
+        </nav>
+      </div>
+      <main class="mdl-layout__content mdl-color--grey-100 myDropzone">
+        <div class="mdc-list-group" style="padding-left: 1.5em; padding-top: 1.1em">
+              <ul class="mdc-list mdc-list--two-line mdc-list--avatar-list two-line-avatar-text-icon-demo" ng-repeat="file in queue">
+                <li class="mdc-list-item">
+                  <span class="mdc-list-item__start-detail grey-bg" role="presentation">
+                    <i class="material-icons" aria-hidden="true">insert_drive_file</i>
+                  </span>
+                  <span class="mdc-list-item__text">
+                    {a file.original.name a}
+                    <span class="mdc-list-item__text__secondary">{a toHuman(file.original.size) a} </span>
+                  </span> 
+                  <a ng-href="/download/{a file.download_code a}" ng-hide="show_file(file)" style="text-decoration: none; padding-top: 3%" class="mdc-list-item__end-detail material-icons" aria-label="Download" title="Download">
+                    file_download
+                  </a>
+                </li>
+                <md-progress-linear style="width: 90%; padding-left: 3.5%" md-mode="determinate" ng-value="file.progress"></md-progress-linear>
+            </div>
+      </main>
+    </div>
+    <script src="https://code.getmdl.io/1.3.0/material.min.js"></script>
+  </body>
+</html>
+<script>
+  var siaApp = angular.module('siaApp', ['ngMaterial']);
+
+  siaApp.config(['$interpolateProvider', function($interpolateProvider) {
+    $interpolateProvider.startSymbol('{a');
+    $interpolateProvider.endSymbol('a}');
+  }]);
+
+  siaApp.controller('SiaController', function SiaController($scope, $http, $interval) {
+    $scope.toHuman = function(size) {
+        var cutoff, i, j, len, selectedSize, selectedUnit, unit, units;
+        selectedSize = 0;
+        selectedUnit = "b";
+        if (size > 0) {
+          units = ['TB', 'GB', 'MB', 'KB', 'B'];
+          for (i = j = 0, len = units.length; j < len; i = ++j) {
+            unit = units[i];
+            cutoff = Math.pow(1000, 4 - i) / 10;
+            if (size >= cutoff) {
+              selectedSize = size / Math.pow(1000, 4 - i);
+              selectedUnit = unit;
+              break;
+            }
+          }
+          selectedSize = Math.round(10 * selectedSize) / 10;
+        }
+        return selectedSize + " " + selectedUnit;
+    };
+
+    $scope.show_file  = function(file){
+      if(file.download_code != undefined){
+        return false;
+      } else {
+        return true;
+      }
+    }
+
+    $scope.check_for_file_update = $interval(function(){
+      $scope.queue.forEach(function(f){
+        $http.get("/status/" + f.cached.id).then(function(res){
+          if(res.data.download_code){
+            f.download_code = res.data.download_code
+            f.progress = 100
+          } else {
+            f.progress = res.data.progress
+            $scope.cancel_interval = false
+          }
+        })
+      })
+      $scope.cancel_interval = true
+      for (var i = 0; i < $scope.queue.length; i++) {
+        if($scope.queue[i].progress != 100){
+          $scope.cancel_interval = false
+        }
+      }
+      if($scope.cancel_interval){
+        $interval.cancel($scope.check_for_file_update)
+      }
+    }, 500)
+
+    $http.get('/queue_list').then(function(res){
+      $scope.queue = res.data
+      scope = $scope
+    })
+  });
+
+
+
+  </script>
