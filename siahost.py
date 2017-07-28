@@ -13,7 +13,7 @@ import json
 import os
 
 app = Flask(__name__, static_url_path='')
-sc = Sia(port=9991)
+sc = Sia()
 app.config.from_pyfile('config.py')
 db = SQLAlchemy(app)
 
