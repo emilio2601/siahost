@@ -171,7 +171,7 @@ def upload_file():
         abort(400)
 
 def upload_to_sia(new_file, file_save_dir):
-    sc.renter.upload(new_file.file_id, file_save_dir, 1, 1)
+    sc.renter.upload(new_file.file_id, file_save_dir, 10, 20)
     t = threading.Thread(target=change_status_when_done, args=(new_file.file_id, file_save_dir))
     t.start()
 
