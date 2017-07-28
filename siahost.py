@@ -176,17 +176,18 @@ def upload_to_sia(new_file, file_save_dir):
     t.start()
 
 def change_status_when_done(file_id, file_save_dir):
-    session = db_session()
-    session.begin()
-    while True:
-        for f in sc.renter.files:
-            if f ['siapath'] == file_id:
-                if f['available']:
-                    new_file = session.query(File).filter_by(file_id=file_id).first()
-                    new_file.status = "available"
-                    session.commit()
-                    os.remove(file_save_dir)
-                    return
+    with app.app_context():
+        session = db_session()
+        session.begin()
+        while True:
+            for f in sc.renter.files:
+                if f ['siapath'] == file_id:
+                    if f['available']:
+                        new_file = session.query(File).filter_by(file_id=file_id).first()
+                        new_file.status = "available"
+                        session.commit()
+                        os.remove(file_save_dir)
+                        return
     
 
 
