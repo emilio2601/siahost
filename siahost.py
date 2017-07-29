@@ -24,7 +24,6 @@ db_session = scoped_session(lambda: create_session(bind=db.get_engine()))
 import sia_helpers
 
 
-
 roles_users = db.Table('roles_users',
         db.Column('user_id', db.Integer(), db.ForeignKey('user.id')),
         db.Column('role_id', db.Integer(), db.ForeignKey('role.id')))
@@ -35,7 +34,6 @@ class Role(db.Model, RoleMixin):
     description = db.Column(db.String(255))
 
 class User(db.Model, UserMixin):
-
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True)
     password = db.Column(db.String(255))
@@ -66,6 +64,10 @@ class File(db.Model):
         self.status = "not available"
 
     def serialize(self):
+        if self.status == "not available" and sia_helpers.get_available(self.file_id):
+            self.status = "available"
+            db.session.add(self)
+            db.session.commit()
         return {
             'file_id': self.file_id,
             'name'   : self.name,
@@ -109,7 +111,6 @@ class CachedFile(db.Model):
 def list_files():
     return jsonify({'files': [f.serialize() for f in File.query.filter_by(user=current_user.id)]})
           
-
 @app.route('/file/<string:file_id>', methods=['GET'])
 @login_required
 def get_file_detail(file_id):
@@ -118,7 +119,6 @@ def get_file_detail(file_id):
         return jsonify(res.serialize())
     else:
         abort(404)
-
 
 @app.route('/upload', methods=["POST"])
 @login_required
@@ -130,7 +130,7 @@ def upload_file():
         file.save(filepath)
         if all_chunks_complete(int(request.values['resumableTotalChunks']), request.values['resumableIdentifier']):
             file_obj = file_from_chunks(request.values)
-            upload_to_sia(file_obj)
+            sc.renter.upload(file_obj.file_id, os.path.join(app.config['UPLOAD_FOLDER'], file_obj.file_id), 1, 2)
             db.session.add(file_obj)
             db.session.commit()
             return get_file_detail(file_obj.file_id)
@@ -144,7 +144,6 @@ def all_chunks_complete(total_chunks, identifier):
             return False
     return True
 
-
 def file_from_chunks(values):
     file_obj = File(secure_filename(values['resumableFilename']), values['resumableTotalSize'], current_user.id)
     with open(os.path.join(app.config['UPLOAD_FOLDER'], file_obj.file_id), "wb") as final_file:
@@ -154,31 +153,7 @@ def file_from_chunks(values):
                 final_file.write(inner_file.read())
             os.remove(inner_file_path)
     return file_obj
-
-def upload_to_sia(new_file):
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], new_file.file_id)
-    sc.renter.upload(new_file.file_id, filepath, 1, 1)
-    t = threading.Thread(target=change_status_when_done, args=(new_file.file_id, filepath))
-    t.start()
-
-def change_status_when_done(file_id, file_save_dir):
-    with app.app_context():
-        session = db_session()
-        session.begin()
-        while True:
-            for f in sc.renter.files:
-                if f ['siapath'] == file_id:
-                    if f['available']:
-                        new_file = session.query(File).filter_by(file_id=file_id).first()
-                        new_file.status = "available"
-                        session.commit()
-                    if f['uploadprogress'] == 100:
-                        new_file = session.query(File).filter_by(file_id=file_id).first()
-                        new_file.status = "available"
-                        session.commit()    
-                        os.remove(file_save_dir)
-                        return
-
+    
 @app.route('/upload', methods=["GET"])
 @login_required
 def check_chunk():
@@ -237,17 +212,10 @@ def direct_download(file_id):
         pass
     return download_cached(json.loads(status_file(cached_id).data)['download_code'])
 
-
 @app.route('/queue_list', methods=['GET'])
 @login_required
 def queue_list():
     return jsonify([{"cached": f.serialize(), "original": File.query.filter_by(file_id=f.file_id).first().serialize()} for f in CachedFile.query.filter_by(user=current_user.id).all()])
-
-
-@app.route('/faq', methods=['GET'])
-@login_required
-def faq():
-    return render_template('faq.html', email=current_user.email)
 
 @app.route('/logout', methods=['GET'])
 @login_required
@@ -255,21 +223,25 @@ def logout():
     logout_user()
     return redirect(url_for('/')) 
 
-@app.errorhandler(404)
-def not_found(error):
-    return make_response(jsonify({'error': 'Not found'}), 404)
+@app.route('/faq', methods=['GET'])
+@login_required
+def faq():
+    return render_template('faq.html', email=current_user.email)
 
 @app.route('/', methods=['GET'])
 @login_required
 def index():
-    return render_template('index.html', email=current_user.email, files=File.query.filter_by(user=current_user.id).all())
+    return render_template('index.html', email=current_user.email)
 
 @app.route('/downloads', methods=['GET'])
 @login_required
 def downloads():
     return render_template('downloads.html', email=current_user.email)
 
+@app.errorhandler(404)
+def not_found(error):
+    return make_response(jsonify({'error': 'Not found'}), 404)
+
 if __name__ == '__main__':
-    db.create_all()
-    app.run(debug=True, port=80, host="0.0.0.0")
+    app.run(debug=True)
     

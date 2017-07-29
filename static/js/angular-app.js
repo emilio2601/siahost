@@ -30,6 +30,12 @@ siaApp.controller('SiaController', function SiaController($scope, $http, $interv
     }, 5000, 0, true, file_id, identifier)
   }
 
+  $http.get('/files').then(function(res){
+      $scope.files = res.data.files
+      scope = $scope
+  })
+
+
   $scope.toHuman = function(size) {
       var cutoff, i, j, len, selectedSize, selectedUnit, unit, units;
       selectedSize = 0;

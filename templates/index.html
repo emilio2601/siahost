@@ -95,24 +95,19 @@
               </ul>
               <hr class="mdc-list-divider mdc-list-divider">
               <h3 class="mdc-list-group__subheader">Files</h3>
-              <ul class="mdc-list mdc-list--two-line mdc-list--avatar-list two-line-avatar-text-icon-demo" >
-               {% for file in files %}
+              <ul class="mdc-list mdc-list--two-line mdc-list--avatar-list two-line-avatar-text-icon-demo" ng-repeat="file in files">
                 <li class="mdc-list-item">
                   <span class="mdc-list-item__start-detail grey-bg" role="presentation">
                     <i class="material-icons" aria-hidden="true">insert_drive_file</i>
                   </span>
                   <span class="mdc-list-item__text">
-                    {{file.name}}
-                    <span class="mdc-list-item__text__secondary">{a toHuman({{file.size}}) a}</span>
-                  </span>
-                  {% if file.status != "uploading" %}
-                  <a href ng-click="queue('{{file.file_id}}')" style="text-decoration: none" class="mdc-list-item__end-detail material-icons" title="Add to queue">
+                    {a file.name a}
+                    <span class="mdc-list-item__text__secondary">{a toHuman(file.size) a} </span>
+                  </span> 
+                  <a href ng-click="queue(file.file_id)" style="text-decoration: none" class="mdc-list-item__end-detail material-icons" title="Add to queue">
                     queue
                   </a>
-                  {% endif %}
                 </li>
-               {% endfor %}
-              
                <div id="file-preview"></div>
               </ul>
             </div>
