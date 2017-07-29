@@ -19,12 +19,12 @@ siaApp.controller('SiaController', function SiaController($scope, $http, $interv
         if(res.data.uploadprogress == 100){
           $interval.cancel($scope.file_promises[file_id])
           document.getElementById(identifier).getElementsByClassName("progress-bars")[0].parentNode.removeChild(document.getElementById(identifier).getElementsByClassName("progress-bars")[0])
+        }
         if(res.data.available){
           document.getElementById(identifier).getElementsByTagName("a")[0].style.display = "inline"
           document.getElementById(identifier).getElementsByTagName("a")[0].onclick = function(){
             $scope.queue(res.data.file_id)
           }
-        }
         }
       })
     }, 5000, 0, true, file_id, identifier)
