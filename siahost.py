@@ -68,6 +68,8 @@ class File(db.Model):
             self.status = "available"
             db.session.add(self)
             db.session.commit()
+        if os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], self.file_id)) and sia_helpers.get_uploadprogress(self.file_id) == 100:
+            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], self.file_id))
         return {
             'file_id': self.file_id,
             'name'   : self.name,
