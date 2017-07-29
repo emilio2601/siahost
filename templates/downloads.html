@@ -157,7 +157,7 @@
       if($scope.cancel_interval){
         $interval.cancel($scope.check_for_file_update)
       }
-    }, 500)
+    }, 5000)
 
     $http.get('/queue_list').then(function(res){
       $scope.queue = res.data

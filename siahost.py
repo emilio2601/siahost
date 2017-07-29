@@ -1,32 +1,30 @@
 #!flask/bin/python
-from flask import Flask, jsonify, abort, request, make_response, render_template, g, send_from_directory
-from flask_security import Security, SQLAlchemyUserDatastore, UserMixin, RoleMixin, login_required, current_user
-from werkzeug.utils import secure_filename
+from flask import Flask, jsonify, abort, request, make_response, render_template, send_from_directory, redirect, url_for
+from flask_security import login_required, current_user, logout_user, SQLAlchemyUserDatastore, Security, RoleMixin, UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import scoped_session, create_session
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+from werkzeug.utils import secure_filename
 from scpy import Sia
 import threading
+import datetime
 import secrets
 import json
 import os
 
-app = Flask(__name__, static_url_path='')
-sc = Sia()
-app.config.from_pyfile('config.py')
-db = SQLAlchemy(app)
 
+app = Flask(__name__, static_url_path='')
+sc = Sia(port=9991)
+app.config.from_pyfile('config.py')
+
+db = SQLAlchemy(app)
 db_session = scoped_session(lambda: create_session(bind=db.get_engine()))
 
-app.config['DEBUG'] = True
-app.config['SECRET_KEY'] = 'super-secret'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
 
-# Create database connection object
-db = SQLAlchemy(app)
+import sia_helpers
 
-# Define models
+
+
 roles_users = db.Table('roles_users',
         db.Column('user_id', db.Integer(), db.ForeignKey('user.id')),
         db.Column('role_id', db.Integer(), db.ForeignKey('role.id')))
@@ -37,6 +35,7 @@ class Role(db.Model, RoleMixin):
     description = db.Column(db.String(255))
 
 class User(db.Model, UserMixin):
+
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True)
     password = db.Column(db.String(255))
@@ -44,7 +43,7 @@ class User(db.Model, UserMixin):
     roles = db.relationship('Role', secondary=roles_users,
                             backref=db.backref('users', lazy='dynamic'))
 
-# Setup Flask-Security
+
 user_datastore = SQLAlchemyUserDatastore(db, User, Role)
 security = Security(app, user_datastore)
 
@@ -63,7 +62,7 @@ class File(db.Model):
         self.name = name
         self.size = size
         self.user = user
-        self.last_modified = datetime.utcnow()
+        self.last_modified = datetime.datetime.utcnow()
         self.status = "not available"
 
     def serialize(self):
@@ -74,27 +73,9 @@ class File(db.Model):
             'user'   : self.user,
             'last_modified' : self.last_modified,
             'status' : self.status,
-            'available': get_available(self.file_id),
-            'uploadprogress': get_uploadprogress(self.file_id),
+            'available': sia_helpers.get_available(self.file_id),
+            'uploadprogress': sia_helpers.get_uploadprogress(self.file_id),
     }
-
-def get_available(file_id):
-    for f in sc.renter.files:
-        if f ['siapath'] == file_id:
-            return f['available']
-    return False
-
-def get_uploadprogress(file_id):
-    for f in sc.renter.files:
-        if f ['siapath'] == file_id:
-            return f['uploadprogress']
-    return 0
-
-def get_downloadprogress(file_id):
-    for f in sc.renter.downloads:
-        if f ['siapath'] == file_id:
-            return f['received'] / f['filesize'] * 100
-    return 0
 
 class CachedFile(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -110,7 +91,7 @@ class CachedFile(db.Model):
         self.file_id = file_id
         self.user = user
         self.download_code = ""
-        self.created = datetime.utcnow()
+        self.created = datetime.datetime.utcnow()
         self.lifetime = lifetime
 
     def serialize(self):
@@ -123,22 +104,11 @@ class CachedFile(db.Model):
             'lifetime': self.lifetime,
     }
 
-
 @app.route('/files', methods=['GET'])
 @login_required
 def list_files():
     return jsonify({'files': [f.serialize() for f in File.query.filter_by(user=current_user.id)]})
-
-@app.route('/purge_cache', methods=['GET'])
-@login_required
-def purge_cache():
-    for f in CachedFile.query.all():
-        if f.created + datetime.timedelta(seconds=f.lifetime) < datetime.utcnow():
-            os.remove(os.path.join(app.config['FINAL_CACHE_FOLDER'], f.download_code))
-            db.session.delete(f)
-            db.session.commit()
-            
-
+          
 
 @app.route('/file/<string:file_id>', methods=['GET'])
 @login_required
@@ -149,30 +119,38 @@ def get_file_detail(file_id):
     else:
         abort(404)
 
-@app.route('/upload', methods=['POST'])
+
+@app.route('/upload', methods=["POST"])
 @login_required
 def upload_file():
     file = request.files['file']
     if file:
-        filename = secure_filename(file.filename)
-        new_file = File(filename, 1024, current_user.id)
-        file_save_dir = os.path.join(app.config['UPLOAD_FOLDER'], new_file.file_id)
-        file.save(file_save_dir)
-        new_file.size = os.path.getsize(file_save_dir)
-        new_file.status = "uploading"
-        try:
-            upload_to_sia(new_file, file_save_dir)
-        except:
-            abort(500)
-        db.session.add(new_file)
-        db.session.commit()
-        return get_file_detail(new_file.file_id)
-    else:
-        abort(400)
+        filename = secure_filename(f"{request.values['resumableChunkNumber']}-{request.values['resumableIdentifier']}")
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        if request.values['resumableChunkNumber'] == request.values['resumableTotalChunks']:
+            file_obj = file_from_chunks(request.values)
+            upload_to_sia(file_obj)
+            db.session.add(file_obj)
+            db.session.commit()
+            return get_file_detail(file_obj.file_id)
+        else:
+            return jsonify({'msg': f"Received chunk {request.values['resumableChunkNumber']} correctly"})
 
-def upload_to_sia(new_file, file_save_dir):
-    sc.renter.upload(new_file.file_id, file_save_dir, 10, 20)
-    t = threading.Thread(target=change_status_when_done, args=(new_file.file_id, file_save_dir))
+def file_from_chunks(values):
+    file_obj = File(secure_filename(values['resumableFilename']), values['resumableTotalSize'], current_user.id)
+    with open(os.path.join(app.config['UPLOAD_FOLDER'], file_obj.file_id), "wb") as final_file:
+        for i in range(int(values['resumableTotalChunks'])):
+            inner_file_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(f"{i+1}-{request.values['resumableIdentifier']}"))
+            with open(inner_file_path, "rb") as inner_file:
+                final_file.write(inner_file.read())
+            os.remove(inner_file_path)
+    return file_obj
+
+def upload_to_sia(new_file):
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], new_file.file_id)
+    sc.renter.upload(new_file.file_id, filepath, 1, 1)
+    t = threading.Thread(target=change_status_when_done, args=(new_file.file_id, filepath))
     t.start()
 
 def change_status_when_done(file_id, file_save_dir):
@@ -188,8 +166,16 @@ def change_status_when_done(file_id, file_save_dir):
                         session.commit()
                         os.remove(file_save_dir)
                         return
-    
 
+@app.route('/upload', methods=["GET"])
+@login_required
+def check_chunk():
+    if os.path.isfile(os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(f"{request.values['resumableChunkNumber']}-{request.values['resumableIdentifier']}"))):
+        if(request.values['resumableChunkNumber'] == request.values['resumableTotalChunks']):
+            abort(404)
+        return jsonify({"msg": "ok"})
+    else:
+        abort(404)
 
 @app.route('/queue/<string:file_id>/<int:lifetime>', methods=['GET'])
 @login_required
@@ -212,7 +198,7 @@ def download_file(file_id, lifetime):
 @login_required
 def status_file(cached_file_id):
     cached_file = CachedFile.query.filter_by(cached_file_id=cached_file_id).first_or_404()
-    progress = get_downloadprogress(cached_file.file_id)
+    progress = sia_helpers.get_downloadprogress(cached_file.file_id)
     if progress == 100 and cached_file.download_code == "":
         cached_file.download_code = secrets.token_hex(64)
         os.rename(os.path.join(app.config['CACHE_FOLDER'], cached_file.cached_file_id), os.path.join(app.config['FINAL_CACHE_FOLDER'], cached_file.download_code))
@@ -239,20 +225,12 @@ def direct_download(file_id):
         pass
     return download_cached(json.loads(status_file(cached_id).data)['download_code'])
 
-@app.route('/', methods=['GET'])
-@login_required
-def index():
-    return render_template('index.html', email=current_user.email, files=File.query.filter_by(user=current_user.id).all())
-
-@app.route('/downloads', methods=['GET'])
-@login_required
-def downloads():
-    return render_template('downloads.html', email=current_user.email)
 
 @app.route('/queue_list', methods=['GET'])
 @login_required
 def queue_list():
     return jsonify([{"cached": f.serialize(), "original": File.query.filter_by(file_id=f.file_id).first().serialize()} for f in CachedFile.query.filter_by(user=current_user.id).all()])
+
 
 @app.route('/faq', methods=['GET'])
 @login_required
@@ -268,6 +246,16 @@ def logout():
 @app.errorhandler(404)
 def not_found(error):
     return make_response(jsonify({'error': 'Not found'}), 404)
+
+@app.route('/', methods=['GET'])
+@login_required
+def index():
+    return render_template('index.html', email=current_user.email, files=File.query.filter_by(user=current_user.id).all())
+
+@app.route('/downloads', methods=['GET'])
+@login_required
+def downloads():
+    return render_template('downloads.html', email=current_user.email)
 
 if __name__ == '__main__':
     db.create_all()
