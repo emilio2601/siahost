@@ -128,7 +128,7 @@ def upload_file():
         filename = secure_filename(f"{request.values['resumableChunkNumber']}-{request.values['resumableIdentifier']}")
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        if request.values['resumableChunkNumber'] == request.values['resumableTotalChunks']:
+        if all_chunks_complete(int(request.values['resumableTotalChunks']), request.values['resumableIdentifier']):
             file_obj = file_from_chunks(request.values)
             upload_to_sia(file_obj)
             db.session.add(file_obj)
@@ -136,6 +136,14 @@ def upload_file():
             return get_file_detail(file_obj.file_id)
         else:
             return jsonify({'msg': f"Received chunk {request.values['resumableChunkNumber']} correctly"})
+
+def all_chunks_complete(total_chunks, identifier):
+    for i in range(total_chunks):
+        filename = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(f"{i+1}-{identifier}"))
+        if not os.path.exists(filename):
+            return False
+    return True
+
 
 def file_from_chunks(values):
     file_obj = File(secure_filename(values['resumableFilename']), values['resumableTotalSize'], current_user.id)
