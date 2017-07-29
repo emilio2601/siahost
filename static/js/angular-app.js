@@ -78,5 +78,5 @@ r.on('fileError', function(file, message){
   console.log(file)
   console.log("error!")
   console.log(message)
-  document.getElementById(file.uniqueIdentifier).getElementsByClassName("bar-aaa")[0].style.color = "red"
+  document.getElementById(file.uniqueIdentifier).getElementsByClassName("bar-aaa")[0].style.backgroundColor = "red"
   });
