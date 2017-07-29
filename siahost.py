@@ -172,6 +172,10 @@ def change_status_when_done(file_id, file_save_dir):
                         new_file = session.query(File).filter_by(file_id=file_id).first()
                         new_file.status = "available"
                         session.commit()
+                    if f['uploadprogress'] == 100:
+                        new_file = session.query(File).filter_by(file_id=file_id).first()
+                        new_file.status = "available"
+                        session.commit()    
                         os.remove(file_save_dir)
                         return
 
